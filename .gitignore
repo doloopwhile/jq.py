@@ -3,6 +3,7 @@
 /_virtualenv
 /build
 /jq.c
-/jq.so
+/jq*.so
+/_jq
 /.tox
 /*.egg-info

@@ -19,7 +19,7 @@ def read_or_empty_string(fname):
         return ""
 
 
-jq_lib_dir = path_in_dir("_jq-lib")
+jq_lib_dir = path_in_dir("_jq")
 
 class jq_build_ext(build_ext):
     def run(self):

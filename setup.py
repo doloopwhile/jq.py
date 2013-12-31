@@ -23,27 +23,27 @@ jq_lib_dir = path_in_dir("_jq-lib")
 
 class jq_build_ext(build_ext):
     def run(self):
-        
+
         def command(args):
             subprocess.check_call(args, cwd=path_in_dir(jq_lib_dir))
-            
+
         if os.path.exists(jq_lib_dir):
             command(["git", "checkout", "master"])
             command(["git", "pull"])
-        else:    
+        else:
             subprocess.check_call([
                 "git", "clone",
                 "https://github.com/stedolan/jq.git",
                 jq_lib_dir
             ])
             command(["git", "checkout", "master"])
-        
+
         command(["mkdir", "-p", "m4"])
         command(["autoreconf", "-i"])
         command(["./configure", "CFLAGS=-fPIC"])
         command(["make", "clean"])
         command(["make"])
-        
+
         build_ext.run(self)
 
 

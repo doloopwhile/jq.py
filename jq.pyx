@@ -94,17 +94,14 @@ cdef class _State:
     cdef object _errors
     cdef jq_state* _jq
 
-    def __init__(self):
+    def __init__(self, const char* script):
         self._errors = []
         self._jq = jq_init()
         if not self._jq:
             raise JqInitError('Failed to initialize jq')
         jq_set_error_cb(self._jq, _State_error_cb, <void*>self)
 
-    def compile(self, const char* script):
-        self._errors = []
-        cdef bint r = jq_compile(self._jq, script)
-        if not r:
+        if not jq_compile(self._jq, script):
             raise JqCompileError("\n".join(self._errors))
 
     def p(self, obj):
@@ -157,7 +154,6 @@ cdef class _State:
                 it = jv_object_iter_next(jval, it)
             return adict
 
-
     cdef jv pyobj_to_jv(self, object pyobj):
         cdef jv jval
         if isinstance(pyobj, str):
@@ -185,33 +181,6 @@ cdef class _State:
 
     cdef _error_cb(self, jv err):
         self._errors.append(jv_string_value(err).decode('utf-8'))
-
-        #cdef jq_state jq = self._jq
-        #cdef locfile locations
-        #cdef int nerrors
-        #cdef block program
-
-        #jv_nomem_handler(jq.nomem_handler, jq.nomem_handler_data)
-        #locfile_init(locations, jq, str, strlen(str))
-        #try:
-        #    jq_reset(jq)
-        #    if (jq.bc):
-        #        bytecode_free(jq._bc)
-        #        jq.bc = 0
-
-        #    stderr = io.StringIO()
-        #    with capture_stderr(stderr):
-        #        nerrors = jq_parse(locations, program)
-        #        if not nerrors:
-        #            nerrors = builtins_bind(jq, program)
-        #            if not nerrors:
-        #                nerrors = block_compile(program, locations, jq.bc)
-        #    if nerrors:
-        #        msg = stderr.getvalue() + "\n"
-        #        msg += "{0} compile {1}".format(nerrors, "errors" if nerrors > 1 else "error")
-        #        raise JqCompileError(msg)
-        #finally:
-        #    locfile_free(locations)
 
 
 #def jq(object program):

@@ -1,6 +1,4 @@
-from contextlib import contextmanager
-import io
-import sys
+import json
 
 
 cdef extern from "jv.h":
@@ -19,7 +17,7 @@ cdef extern from "jv.h":
       JV_KIND_OBJECT
 
 
-    jv jv_dump_string(jv, int flags)
+    jv jv_copy(jv)
     jv_kind jv_get_kind(jv)
     cdef int jv_is_valid(jv x):
         return jv_get_kind(x) != JV_KIND_INVALID
@@ -32,10 +30,12 @@ cdef extern from "jv.h":
     double jv_number_value(jv)
     bint jv_is_integer(jv)
 
+    jv jv_array()
     jv jv_array_sized(int)
     int jv_array_length(jv)
     jv jv_array_get(jv, int)
     jv jv_array_set(jv, int, jv)
+    jv jv_array_append(jv, jv)
 
     jv jv_string_sized(const char*, int)
 
@@ -57,63 +57,50 @@ cdef extern from "jq.h":
     ctypedef void (*jq_err_cb)(void *, jv)
 
     jq_state *jq_init()
-        #        raise JqCompileError(msg)
     void jq_teardown(jq_state **)
-    bint jq_compile(jq_state *, const char* str)
+    bint jq_compile_args(jq_state *, const char* str, jv args)
     void jq_start(jq_state *, jv value, int flags)
     jv jq_next(jq_state *)
     void jq_set_error_cb(jq_state *, jq_err_cb, void *)
 
 
-class JqError(Exception): pass
-class JqInitError(JqError): pass
-class JqCompileError(ValueError, JqError): pass
-class JqUnsupportedTypeError(TypeError, JqError): pass
+def compile(script, **kw):
+    return _Jq(script.encode('utf-8'), kw)
 
 
-@contextmanager
-def capture_stderr(ioobj):
-    orig_stderr, sys.stderr = sys.stderr, ioobj
-    try:
-        yield
-    finally:
-        sys.stderr = orig_stderr
-
-def compile(script):
-    script = script.encode('utf-8')
-    state = _State()
-    state.compile(script)
-    return state
+cdef void _Jq_error_cb(void* x, jv err):
+    _Jq._error_cb(<object>x, err)
 
 
-cdef void _State_error_cb(void* x, jv err):
-    _State._error_cb(<object>x, err)
-
-
-cdef class _State:
+cdef class _Jq:
     cdef object _errors
     cdef jq_state* _jq
 
-    def __init__(self, const char* script):
+    def __init__(self, const char* script, vars={}):
         self._errors = []
         self._jq = jq_init()
         if not self._jq:
-            raise JqInitError('Failed to initialize jq')
-        jq_set_error_cb(self._jq, _State_error_cb, <void*>self)
+            raise RuntimeError('Failed to initialize jq')
+        jq_set_error_cb(self._jq, _Jq_error_cb, <void*>self)
 
-        if not jq_compile(self._jq, script):
-            raise JqCompileError("\n".join(self._errors))
+        args = self.pyobj_to_jv([
+            dict(name=k, value=v)
+            for k, v in vars.items()
+        ])
 
-    def p(self, obj):
-        return self._process(self.pyobj_to_jv(obj))
+        if not jq_compile_args(self._jq, script, args):
+            raise ValueError("\n".join(self._errors))
 
-    cdef _process(self, jv value):
-        cdef int jq_flags = 0
-        jq_start(self._jq, value, jq_flags);
-        cdef jv result
-        cdef int dumpopts = 0
-        cdef jv dumped
+    cdef _error_cb(self, jv err):
+        self._errors.append(jv_string_value(err).decode('utf-8'))
 
+    def __dealloc__(self):
+        return
+        jq_teardown(&self._jq)
+
+    def apply(self, pyobj):
+        cdef jv value = self.pyobj_to_jv(pyobj)
+        jq_start(self._jq, value, 0)
         cdef list output = []
 
         while True:
@@ -126,8 +113,7 @@ cdef class _State:
         return output
 
     cdef object jv_to_pyobj(self, jv jval):
-        cdef jv_kind kind = jv_get_kind(jval)
-        cdef int it
+        kind = jv_get_kind(jval)
 
         if kind == JV_KIND_NULL:
             return None
@@ -143,7 +129,7 @@ cdef class _State:
         elif kind == JV_KIND_STRING:
             return jv_string_value(jval).decode('utf-8')
         elif kind == JV_KIND_ARRAY:
-            [jv_array_get(jval, i) for i in range(jv_array_length(jval))]
+            return [self.jv_to_pyobj(jv_array_get(jv_copy(jval), i)) for i in range(jv_array_length(jv_copy(jval)))]
         elif kind == JV_KIND_OBJECT:
             adict = {}
             it = jv_object_iter(jval)
@@ -155,7 +141,6 @@ cdef class _State:
             return adict
 
     cdef jv pyobj_to_jv(self, object pyobj):
-        cdef jv jval
         if isinstance(pyobj, str):
             pyobj = pyobj.encode('utf-8')
             return jv_string_sized(pyobj, len(pyobj))
@@ -164,22 +149,65 @@ cdef class _State:
         elif isinstance(pyobj, (int, long, float)):
             return jv_number(pyobj)
         elif isinstance(pyobj, (list, tuple)):
-            jval = jv_array_sized(len(pyobj))
-            for i in range(len(pyobj)):
-                jval = jv_array_set(jval, i, self.pyobj_to_jv(pyobj))
+            jval = jv_array()
+            for i, item in enumerate(pyobj):
+                jval = jv_array_append(jval, self.pyobj_to_jv(item))
             return jval
         elif isinstance(pyobj, dict):
             jval = jv_object()
             for key, value in pyobj.items():
-                jv_object_set(jval, self.pyobj_to_jv(key), self.pyobj_to_jv(value))
+                if not isinstance(key, str):
+                    raise TypeError("Key of json object must be a str, but got {}".format(type(key)))
+                jval = jv_object_set(jval, self.pyobj_to_jv(key), self.pyobj_to_jv(value))
             return jval
         elif pyobj is None:
             return jv_null()
         else:
-            raise JqUnsupportedTypeError("{!r} object could not be converted to json".format(type(pyobj)))
+            raise TypeError("{!r} could not be converted to json".format(type(pyobj)))
+
+    def first(self, value, default=None):
+        ret = self.apply(value)
+        if not ret:
+            return default
+        return ret[0]
+
+    def one(self, value):
+        ret = self.apply(value)
+        if not ret:
+            raise IndexError("Result of jq is empty")
+        elif len(ret) > 1:
+            raise IndexError("Result of jq have multiple elements")
+        return ret[0]
 
 
-    cdef _error_cb(self, jv err):
-        self._errors.append(jv_string_value(err).decode('utf-8'))
+def apply(script, value, **kw):
+    return compile(script, **kw).apply(value)
 
 
+def first(script, value, **kw):
+    return compile(script, **kw).first(value)
+
+
+def one(script, value, **kw):
+    return compile(script, **kw).one(value)
+
+
+def jq(script):
+    return _Program(compile(script))
+
+cdef class _Program:
+    cdef object compiled
+
+    def __init__(self, compiled):
+        self.compiled = compiled
+
+    def transform(self, input, raw_input=False, raw_output=False, multiple_output=False):
+        if raw_input:
+            input = json.loads(input)
+
+        if raw_output:
+            return "\n".join(map(json.dumps, self.compiled.apply(input)))
+        elif multiple_output:
+            return self.compiled.apply(input)
+        else:
+            return self.compiled.first(input)

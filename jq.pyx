@@ -166,7 +166,7 @@ cdef class _State:
         elif isinstance(pyobj, (list, tuple)):
             jval = jv_array_sized(len(pyobj))
             for i in range(len(pyobj)):
-                jv_array_set(jval, i, self.pyobj_to_jv(pyobj))
+                jval = jv_array_set(jval, i, self.pyobj_to_jv(pyobj))
             return jval
         elif isinstance(pyobj, dict):
             jval = jv_object()
@@ -183,74 +183,3 @@ cdef class _State:
         self._errors.append(jv_string_value(err).decode('utf-8'))
 
 
-#def jq(object program):
-#    cdef object program_bytes_obj = program.encode("utf8")
-#    cdef char* program_bytes = program_bytes_obj
-#    cdef jq_state *jq = jq_init()
-#    if not jq:
-#        raise Exception("jq_init failed")
-#
-#    # TODO: jq_compile prints error to stderr
-#    cdef int compiled = jq_compile(jq, program_bytes)
-#
-#    if not compiled:
-#        raise ValueError("program was not valid")
-#
-#    cdef _Program wrapped_program = _Program.__new__(_Program)
-#    wrapped_program._jq = jq
-#    return wrapped_program
-#
-#
-#cdef class _Program(object):
-#    cdef jq_state* _jqfairydangsing
-#
-#    def __dealloc__(self):
-#        jq_teardown(&self._jq)
-
-    #def transform(self, input, raw_input=False, raw_output=False, multiple_output=False):
-    #    string_input = input if raw_input else json.dumps(input)
-    #    bytes_input = string_input.encode("utf8")
-    #    result_bytes = self._string_to_strings(bytes_input)
-    #    result_strings = map(lambda s: s.decode("utf8"), result_bytes)
-    #    if raw_output:
-    #        return "\n".join(result_strings)
-    #    elif multiple_output:
-    #        return [json.loads(s) for s in result_strings]
-    #    else:
-    #        return json.loads(next(iter(result_strings)))
-
-
-    #cdef object _string_to_strings(self, char* input):
-    #    cdef jv_parser* parser = jv_parser_new()
-    #    jv_parser_set_buf(parser, input, len(input), 0)
-    #    cdef jv value
-    #    results = []
-    #    while True:
-    #        value = jv_parser_next(parser)
-    #        if jv_is_valid(value):
-    #            self._process(value, results)
-    #        else:
-    #            break
-
-    #    jv_parser_free(parser)
-
-    #    return results
-
-
-    #cdef void _process(self, jv value, object output):
-    #    cdef int jq_flags = 0
-
-    #    jq_start(self._jq, value, jq_flags);
-    #    cdef jv result
-    #    cdef int dumpopts = 0
-    #    cdef jv dumped
-
-    #    while True:
-    #        result = jq_next(self._jq)
-    #        if not jv_is_valid(result):
-    #            jv_free(result)
-    #            return
-    #        else:
-    #            dumped = jv_dump_string(result, dumpopts)
-    #            output.append(jv_string_value(dumped))
-    #            jv_free(dumped)

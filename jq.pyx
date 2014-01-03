@@ -1,6 +1,5 @@
 import json
 
-
 cdef extern from "jv.h":
     ctypedef struct jv:
         pass
@@ -49,6 +48,16 @@ cdef extern from "jv.h":
     jv jv_object_iter_key(jv, int)
     jv jv_object_iter_value(jv, int)
 
+    ctypedef enum jv_parser_flags:
+      JV_PARSE_EXPLODE_TOPLEVEL_ARRAY
+
+    cdef struct jv_parser:
+        pass
+
+    jv_parser* jv_parser_new(jv_parser_flags)
+    void jv_parser_free(jv_parser*)
+    void jv_parser_set_buf(jv_parser*, const char*, int, int)
+    jv jv_parser_next(jv_parser*)
 
 cdef extern from "jq.h":
     ctypedef struct jq_state:
@@ -64,8 +73,59 @@ cdef extern from "jq.h":
     void jq_set_error_cb(jq_state *, jq_err_cb, void *)
 
 
-def compile(script, **kw):
-    return _Jq(script.encode('utf-8'), kw)
+cdef object jv_to_pyobj(jv jval):
+    kind = jv_get_kind(jval)
+
+    if kind == JV_KIND_NULL:
+        return None
+    elif kind == JV_KIND_FALSE:
+        return False
+    elif kind == JV_KIND_TRUE:
+        return True
+    elif kind == JV_KIND_NUMBER:
+        v = jv_number_value(jval)
+        if jv_is_integer(jval):
+            return int(v)
+        return v
+    elif kind == JV_KIND_STRING:
+        return jv_string_value(jval).decode('utf-8')
+    elif kind == JV_KIND_ARRAY:
+        return [jv_to_pyobj(jv_array_get(jv_copy(jval), i)) for i in range(jv_array_length(jv_copy(jval)))]
+    elif kind == JV_KIND_OBJECT:
+        adict = {}
+        it = jv_object_iter(jval)
+        while jv_object_iter_valid(jval, it):
+            k = jv_to_pyobj(jv_object_iter_key(jval, it))
+            v = jv_to_pyobj(jv_object_iter_value(jval, it))
+            adict[k] = v
+            it = jv_object_iter_next(jval, it)
+        return adict
+
+
+cdef jv pyobj_to_jv(object pyobj):
+    if isinstance(pyobj, str):
+        pyobj = pyobj.encode('utf-8')
+        return jv_string_sized(pyobj, len(pyobj))
+    elif isinstance(pyobj, bool):
+        return jv_bool(pyobj)
+    elif isinstance(pyobj, (int, long, float)):
+        return jv_number(pyobj)
+    elif isinstance(pyobj, (list, tuple)):
+        jval = jv_array()
+        for i, item in enumerate(pyobj):
+            jval = jv_array_append(jval, pyobj_to_jv(item))
+        return jval
+    elif isinstance(pyobj, dict):
+        jval = jv_object()
+        for key, value in pyobj.items():
+            if not isinstance(key, str):
+                raise TypeError("Key of json object must be a str, but got {}".format(type(key)))
+            jval = jv_object_set(jval, pyobj_to_jv(key), pyobj_to_jv(value))
+        return jval
+    elif pyobj is None:
+        return jv_null()
+    else:
+        raise TypeError("{!r} could not be converted to json".format(type(pyobj)))
 
 
 cdef void _Jq_error_cb(void* x, jv err):
@@ -83,7 +143,7 @@ cdef class _Jq:
             raise RuntimeError('Failed to initialize jq')
         jq_set_error_cb(self._jq, _Jq_error_cb, <void*>self)
 
-        args = self.pyobj_to_jv([
+        args = pyobj_to_jv([
             dict(name=k, value=v)
             for k, v in vars.items()
         ])
@@ -95,11 +155,10 @@ cdef class _Jq:
         self._errors.append(jv_string_value(err).decode('utf-8'))
 
     def __dealloc__(self):
-        return
         jq_teardown(&self._jq)
 
     def apply(self, pyobj):
-        cdef jv value = self.pyobj_to_jv(pyobj)
+        cdef jv value = pyobj_to_jv(pyobj)
         jq_start(self._jq, value, 0)
         cdef list output = []
 
@@ -109,61 +168,8 @@ cdef class _Jq:
                 jv_free(result)
                 break
             else:
-                output.append(self.jv_to_pyobj(result))
+                output.append(jv_to_pyobj(result))
         return output
-
-    cdef object jv_to_pyobj(self, jv jval):
-        kind = jv_get_kind(jval)
-
-        if kind == JV_KIND_NULL:
-            return None
-        elif kind == JV_KIND_FALSE:
-            return False
-        elif kind == JV_KIND_TRUE:
-            return True
-        elif kind == JV_KIND_NUMBER:
-            v = jv_number_value(jval)
-            if jv_is_integer(jval):
-                return int(v)
-            return v
-        elif kind == JV_KIND_STRING:
-            return jv_string_value(jval).decode('utf-8')
-        elif kind == JV_KIND_ARRAY:
-            return [self.jv_to_pyobj(jv_array_get(jv_copy(jval), i)) for i in range(jv_array_length(jv_copy(jval)))]
-        elif kind == JV_KIND_OBJECT:
-            adict = {}
-            it = jv_object_iter(jval)
-            while jv_object_iter_valid(jval, it):
-                k = self.jv_to_pyobj(jv_object_iter_key(jval, it))
-                v = self.jv_to_pyobj(jv_object_iter_value(jval, it))
-                adict[k] = v
-                it = jv_object_iter_next(jval, it)
-            return adict
-
-    cdef jv pyobj_to_jv(self, object pyobj):
-        if isinstance(pyobj, str):
-            pyobj = pyobj.encode('utf-8')
-            return jv_string_sized(pyobj, len(pyobj))
-        elif isinstance(pyobj, bool):
-            return jv_bool(pyobj)
-        elif isinstance(pyobj, (int, long, float)):
-            return jv_number(pyobj)
-        elif isinstance(pyobj, (list, tuple)):
-            jval = jv_array()
-            for i, item in enumerate(pyobj):
-                jval = jv_array_append(jval, self.pyobj_to_jv(item))
-            return jval
-        elif isinstance(pyobj, dict):
-            jval = jv_object()
-            for key, value in pyobj.items():
-                if not isinstance(key, str):
-                    raise TypeError("Key of json object must be a str, but got {}".format(type(key)))
-                jval = jv_object_set(jval, self.pyobj_to_jv(key), self.pyobj_to_jv(value))
-            return jval
-        elif pyobj is None:
-            return jv_null()
-        else:
-            raise TypeError("{!r} could not be converted to json".format(type(pyobj)))
 
     def first(self, value, default=None):
         ret = self.apply(value)
@@ -178,6 +184,10 @@ cdef class _Jq:
         elif len(ret) > 1:
             raise IndexError("Result of jq have multiple elements")
         return ret[0]
+
+
+def compile(script, **kw):
+    return _Jq(script.encode('utf-8'), kw)
 
 
 def apply(script, value, **kw):
@@ -201,13 +211,33 @@ cdef class _Program:
     def __init__(self, compiled):
         self.compiled = compiled
 
+    cdef object parse_json(self, const char* input):
+        parser = jv_parser_new(<jv_parser_flags>0)
+        try:
+            jv_parser_set_buf(parser, input, len(input), 0)
+            values = []
+            while True:
+                jval = jv_parser_next(parser)
+                if not jv_is_valid(jval):
+                    break
+                values.append(jv_to_pyobj(jval))
+            return values
+        finally:
+            jv_parser_free(parser)
+
+
     def transform(self, input, raw_input=False, raw_output=False, multiple_output=False):
         if raw_input:
-            input = json.loads(input)
+            bytes_input = input.encode("utf8")
+            transformed = []
+            for v in self.parse_json(bytes_input):
+                transformed.extend(self.compiled.apply(v))
+        else:
+            transformed = self.compiled.apply(input)
 
         if raw_output:
-            return "\n".join(map(json.dumps, self.compiled.apply(input)))
+            return "\n".join(map(json.dumps, transformed))
         elif multiple_output:
-            return self.compiled.apply(input)
+            return transformed
         else:
-            return self.compiled.first(input)
+            return next(iter(transformed))

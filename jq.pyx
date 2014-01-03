@@ -1,4 +1,12 @@
+#encoding: utf-8
+"""
+Python binding for ./jq
+"""
+
+
 import json
+import warnings
+
 
 cdef extern from "jv.h":
     ctypedef struct jv:
@@ -128,11 +136,12 @@ cdef jv pyobj_to_jv(object pyobj):
         raise TypeError("{!r} could not be converted to json".format(type(pyobj)))
 
 
-cdef void _Jq_error_cb(void* x, jv err):
-    _Jq._error_cb(<object>x, err)
+cdef void _Script_error_cb(void* x, jv err):
+    _Script._error_cb(<object>x, err)
 
 
-cdef class _Jq:
+cdef class _Script:
+    'Compiled jq script object'
     cdef object _errors
     cdef jq_state* _jq
 
@@ -141,7 +150,7 @@ cdef class _Jq:
         self._jq = jq_init()
         if not self._jq:
             raise RuntimeError('Failed to initialize jq')
-        jq_set_error_cb(self._jq, _Jq_error_cb, <void*>self)
+        jq_set_error_cb(self._jq, _Script_error_cb, <void*>self)
 
         args = pyobj_to_jv([
             dict(name=k, value=v)
@@ -158,6 +167,7 @@ cdef class _Jq:
         jq_teardown(&self._jq)
 
     def apply(self, pyobj):
+        "Transform object by jq script, returning all results as list"
         cdef jv value = pyobj_to_jv(pyobj)
         jq_start(self._jq, value, 0)
         cdef list output = []
@@ -172,12 +182,20 @@ cdef class _Jq:
         return output
 
     def first(self, value, default=None):
+        """\
+        Transform object by jq script, returning the first result.
+        Return default if result is empty.
+        """
         ret = self.apply(value)
         if not ret:
             return default
         return ret[0]
 
     def one(self, value):
+        """\
+        Transform object by jq script, returning the first result.
+        Raise ValueError unless results does not include exactly one element.
+        """
         ret = self.apply(value)
         if not ret:
             raise IndexError("Result of jq is empty")
@@ -187,23 +205,40 @@ cdef class _Jq:
 
 
 def compile(script, **kw):
-    return _Jq(script.encode('utf-8'), kw)
+    "Compile a jq script, retuning a script object"
+    return _Script(script.encode('utf-8'), kw)
 
 
 def apply(script, value, **kw):
+    "Transform object by jq script, returning all results as list"
     return compile(script, **kw).apply(value)
 
 
-def first(script, value, **kw):
-    return compile(script, **kw).first(value)
+def first(script, value, default=None, **kw):
+    """\
+    Transform object by jq script, returning the first result.
+    Return default if result is empty.
+    """
+    return compile(script, **kw).first(value, default)
 
 
 def one(script, value, **kw):
+    """\
+    Transform object by jq script, returning the first result.
+    Raise ValueError unless results does not include exactly one element.
+    """
     return compile(script, **kw).one(value)
 
 
 def jq(script):
+    r"""\
+    Compile jq script.
+
+    This function is deprecated.
+    """
+    warnings.warn("jq.jq() is deprecated", DeprecationWarning)
     return _Program(compile(script))
+
 
 cdef class _Program:
     cdef object compiled

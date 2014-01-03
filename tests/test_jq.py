@@ -7,7 +7,7 @@ import jq
 class TestJq(unittest.TestCase):
     def test_compile_dot(self):
         s = jq.compile('.')
-        self.assertIsInstance(s, jq._Jq)
+        self.assertIsInstance(s, jq._Script)
 
     def test_syntax_error(self):
         expected_message = re.escape('''\

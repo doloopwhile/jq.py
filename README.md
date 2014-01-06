@@ -40,11 +40,13 @@ but different and incompatible with pyjq.
 You have to build and install *jq* library before you build this module.
 
 1. ./jq requires following packages
-- Flex
-- Bison
-- GCC
-- Make
-- Autotools
+
+  - Flex
+  - Bison
+  - GCC
+  - Make
+  - Autotools
+
 These will be installed by your system's package manager (apt, yum, or else).
 
 2. Checkout source code from github

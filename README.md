@@ -2,10 +2,15 @@
 
 pyjq is a Python bindings for *[jq](http://stedolan.github.io/jq/)*.
 
+> jq is like sed for JSON data –
+> you can use it to slice and filter and map and transform structured data
+> with the same ease that sed, awk, grep and friends let you play with text.
+> [http://stedolan.github.io/jq/](http://stedolan.github.io/jq/)
+
 You can seamlessly call *jq* script (like regular expression)
 and process plain python data structure.
 
-## Examples
+## Example
 
     >>> data = dict(
     ...     parameters= [
@@ -19,6 +24,13 @@ and process plain python data structure.
     >>> import jq
     >>> jq.first('.parameters[] | {"param_name": .name, "param_type":.type}', data)
     {'param_type': None, 'param_name': 'PKG_TAG_NAME'}
+
+## API
+For *jq* script, [see its manual](http://stedolan.github.io/jq/manual/).
+
+Only four APIs are provided. They are `apply`, `one`, `first`, `compile`.
+
+``
 
 ## Limitation
 jq is a JSON Processor.

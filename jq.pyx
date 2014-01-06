@@ -182,7 +182,7 @@ cdef class _Script:
         return output
 
     def first(self, value, default=None):
-        """\
+        """
         Transform object by jq script, returning the first result.
         Return default if result is empty.
         """
@@ -192,7 +192,7 @@ cdef class _Script:
         return ret[0]
 
     def one(self, value):
-        """\
+        """
         Transform object by jq script, returning the first result.
         Raise ValueError unless results does not include exactly one element.
         """
@@ -215,7 +215,7 @@ def apply(script, value, **kw):
 
 
 def first(script, value, default=None, **kw):
-    """\
+    """
     Transform object by jq script, returning the first result.
     Return default if result is empty.
     """
@@ -223,7 +223,7 @@ def first(script, value, default=None, **kw):
 
 
 def one(script, value, **kw):
-    """\
+    """
     Transform object by jq script, returning the first result.
     Raise ValueError unless results does not include exactly one element.
     """
@@ -231,7 +231,7 @@ def one(script, value, **kw):
 
 
 def jq(script):
-    r"""\
+    """
     Compile jq script.
 
     This function is deprecated.

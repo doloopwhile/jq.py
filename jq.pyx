@@ -1,6 +1,6 @@
 #encoding: utf-8
 """
-Python binding for ./jq
+Python binding for jq
 """
 
 

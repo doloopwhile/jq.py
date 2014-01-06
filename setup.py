@@ -11,15 +11,16 @@ with io.open('README.md', encoding='utf-8') as fp:
 
 
 setup(
-    install_requires=['cython'],
+    py_modules='jq',
     ext_modules=cythonize([
         Extension(
-            "jq",
-            sources=["jq.pyx"],
+            "_jq",
+            sources=["_jq.pyx"],
             libraries=["jq"],
             # extra_link_args=['-static'],
         )
     ]),
+    install_requires=['cython'],
 
     name='jq',
     version='1.0.0',

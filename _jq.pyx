@@ -136,11 +136,11 @@ cdef jv pyobj_to_jv(object pyobj):
         raise TypeError("{!r} could not be converted to json".format(type(pyobj)))
 
 
-cdef void _Script_error_cb(void* x, jv err):
-    _Script._error_cb(<object>x, err)
+cdef void Script_error_cb(void* x, jv err):
+    Script._error_cb(<object>x, err)
 
 
-cdef class _Script:
+cdef class Script:
     'Compiled jq script object'
     cdef object _errors
     cdef jq_state* _jq
@@ -150,7 +150,7 @@ cdef class _Script:
         self._jq = jq_init()
         if not self._jq:
             raise RuntimeError('Failed to initialize jq')
-        jq_set_error_cb(self._jq, _Script_error_cb, <void*>self)
+        jq_set_error_cb(self._jq, Script_error_cb, <void*>self)
 
         args = pyobj_to_jv([
             dict(name=k, value=v)
@@ -202,77 +202,3 @@ cdef class _Script:
         elif len(ret) > 1:
             raise IndexError("Result of jq have multiple elements")
         return ret[0]
-
-
-def compile(script, **kw):
-    "Compile a jq script, retuning a script object"
-    return _Script(script.encode('utf-8'), kw)
-
-
-def apply(script, value, **kw):
-    "Transform object by jq script, returning all results as list"
-    return compile(script, **kw).apply(value)
-
-
-def first(script, value, default=None, **kw):
-    """
-    Transform object by jq script, returning the first result.
-    Return default if result is empty.
-    """
-    return compile(script, **kw).first(value, default)
-
-
-def one(script, value, **kw):
-    """
-    Transform object by jq script, returning the first result.
-    Raise ValueError unless results does not include exactly one element.
-    """
-    return compile(script, **kw).one(value)
-
-
-def jq(script):
-    """
-    Compile jq script.
-
-    This function is deprecated.
-    """
-    warnings.warn("jq.jq() is deprecated", DeprecationWarning)
-    return _Program(compile(script))
-
-
-cdef class _Program:
-    cdef object compiled
-
-    def __init__(self, compiled):
-        self.compiled = compiled
-
-    cdef object parse_json(self, const char* input):
-        parser = jv_parser_new(<jv_parser_flags>0)
-        try:
-            jv_parser_set_buf(parser, input, len(input), 0)
-            values = []
-            while True:
-                jval = jv_parser_next(parser)
-                if not jv_is_valid(jval):
-                    break
-                values.append(jv_to_pyobj(jval))
-            return values
-        finally:
-            jv_parser_free(parser)
-
-
-    def transform(self, input, raw_input=False, raw_output=False, multiple_output=False):
-        if raw_input:
-            bytes_input = input.encode("utf8")
-            transformed = []
-            for v in self.parse_json(bytes_input):
-                transformed.extend(self.compiled.apply(v))
-        else:
-            transformed = self.compiled.apply(input)
-
-        if raw_output:
-            return "\n".join(map(json.dumps, transformed))
-        elif multiple_output:
-            return transformed
-        else:
-            return next(iter(transformed))

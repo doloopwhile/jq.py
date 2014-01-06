@@ -30,7 +30,7 @@ For *jq* script, [see its manual](http://stedolan.github.io/jq/manual/).
 
 Only four APIs are provided. They are `apply`, `one`, `first`, `compile`.
 
-``
+
 
 ## Limitation
 jq is a JSON Processor.

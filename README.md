@@ -39,7 +39,7 @@ but different and incompatible with pyjq.
 ### Build jq
 You have to build and install *jq* library before you build this module.
 
-1. ./jq requires following packages
+./jq requires following packages:
 
   - Flex
   - Bison
@@ -49,7 +49,7 @@ You have to build and install *jq* library before you build this module.
 
 These will be installed by your system's package manager (apt, yum, or else).
 
-2. Checkout source code from github
+Checkout source code from github:
 
     git clone https://github.com/stedolan/jq
     cd jq
@@ -58,14 +58,13 @@ These will be installed by your system's package manager (apt, yum, or else).
 Where, you can checkout `master` branch or newer release than jq-1.3.
 However, author of pyjq have not build with any release other than jq-1.3.
 
-3. Build and install *jq*
+Build and install *jq*:
 
     autoreconf -i
     ./configure
     make
     sudo make install
 
-4. Update cache for library
 Some system have cached list of dynamic link libraries.
 In such system, library of jq is not loaded and importing python binding fails.
 
